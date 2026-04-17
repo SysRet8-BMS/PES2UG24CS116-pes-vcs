@@ -260,6 +260,11 @@ int tree_from_index(ObjectID *id_out) {
         char *saveptr = NULL;
         char *part = strtok_r(path_copy, "/", &saveptr);
         while (part) {
+            if (part[0] == '\0') {
+                fclose(f);
+                tree_node_free(root);
+                return -1;
+            }
             char *next = strtok_r(NULL, "/", &saveptr);
             int is_file = (next == NULL);
 
