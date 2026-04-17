@@ -24,6 +24,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <ctype.h>
 
 // Forward declarations (implemented in object.c)
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
@@ -195,6 +196,14 @@ int head_update(const ObjectID *new_commit) {
 // Returns 0 on success, -1 on error.
 int commit_create(const char *message, ObjectID *commit_id_out) {
     if (!message || message[0] == '\0' || !commit_id_out) return -1;
+    int has_text = 0;
+    for (const char *p = message; *p; p++) {
+        if (!isspace((unsigned char)*p)) {
+            has_text = 1;
+            break;
+        }
+    }
+    if (!has_text) return -1;
 
     Commit commit;
     memset(&commit, 0, sizeof(commit));
