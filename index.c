@@ -267,7 +267,10 @@ int index_add(Index *index, const char *path) {
         fclose(f);
         return -1;
     }
-    fclose(f);
+    if (fclose(f) != 0) {
+        free(buf);
+        return -1;
+    }
 
     ObjectID blob_id;
     if (object_write(OBJ_BLOB, buf, size, &blob_id) != 0) {
