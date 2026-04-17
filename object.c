@@ -121,7 +121,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 
     char hex[HASH_HEX_SIZE + 1];
     char dir_path[512];
-    char final_path[512];
+    char final_path[1024];
     hash_to_hex(id_out, hex);
     snprintf(dir_path, sizeof(dir_path), "%s/%.2s", OBJECTS_DIR, hex);
     if (mkdir(dir_path, 0755) != 0 && errno != EEXIST) {
@@ -130,8 +130,11 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     }
     object_path(id_out, final_path, sizeof(final_path));
 
-    char tmp_path[512];
-    snprintf(tmp_path, sizeof(tmp_path), "%s/.tmpXXXXXX", dir_path);
+    char tmp_path[1024];
+    if (snprintf(tmp_path, sizeof(tmp_path), "%s/.tmpXXXXXX", dir_path) >= (int)sizeof(tmp_path)) {
+        free(object_buf);
+        return -1;
+    }
     int fd = mkstemp(tmp_path);
     if (fd < 0) {
         free(object_buf);
