@@ -15,6 +15,95 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <errno.h>
+#include <inttypes.h>
+
+int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
+
+typedef struct TreeNode {
+    char name[256];
+    int is_file;
+    uint32_t mode;
+    ObjectID hash;
+    struct TreeNode *children;
+    size_t child_count;
+    size_t child_cap;
+} TreeNode;
+
+static TreeNode *tree_node_new(const char *name, int is_file) {
+    TreeNode *node = calloc(1, sizeof(TreeNode));
+    if (!node) return NULL;
+    snprintf(node->name, sizeof(node->name), "%s", name ? name : "");
+    node->is_file = is_file;
+    return node;
+}
+
+static void tree_node_free_children(TreeNode *node) {
+    if (!node) return;
+    for (size_t i = 0; i < node->child_count; i++) {
+        tree_node_free_children(&node->children[i]);
+    }
+    free(node->children);
+    node->children = NULL;
+    node->child_count = 0;
+    node->child_cap = 0;
+}
+
+static void tree_node_free(TreeNode *node) {
+    if (!node) return;
+    tree_node_free_children(node);
+    free(node);
+}
+
+static TreeNode *tree_node_find_child(TreeNode *node, const char *name) {
+    for (size_t i = 0; i < node->child_count; i++) {
+        if (strcmp(node->children[i].name, name) == 0) return &node->children[i];
+    }
+    return NULL;
+}
+
+static TreeNode *tree_node_add_child(TreeNode *parent, const char *name, int is_file) {
+    if (parent->child_count == parent->child_cap) {
+        size_t new_cap = parent->child_cap == 0 ? 8 : parent->child_cap * 2;
+        TreeNode *new_children = realloc(parent->children, new_cap * sizeof(TreeNode));
+        if (!new_children) return NULL;
+        parent->children = new_children;
+        parent->child_cap = new_cap;
+    }
+    TreeNode *child = &parent->children[parent->child_count++];
+    memset(child, 0, sizeof(*child));
+    snprintf(child->name, sizeof(child->name), "%s", name);
+    child->is_file = is_file;
+    return child;
+}
+
+static int write_tree_recursive(const TreeNode *node, ObjectID *id_out) {
+    Tree tree = {0};
+    if (node->child_count > MAX_TREE_ENTRIES) return -1;
+
+    for (size_t i = 0; i < node->child_count; i++) {
+        const TreeNode *child = &node->children[i];
+        TreeEntry *entry = &tree.entries[tree.count++];
+
+        snprintf(entry->name, sizeof(entry->name), "%s", child->name);
+        if (child->is_file) {
+            entry->mode = child->mode;
+            entry->hash = child->hash;
+        } else {
+            ObjectID subtree_id;
+            if (write_tree_recursive(child, &subtree_id) != 0) return -1;
+            entry->mode = 0040000;
+            entry->hash = subtree_id;
+        }
+    }
+
+    void *data = NULL;
+    size_t len = 0;
+    if (tree_serialize(&tree, &data, &len) != 0) return -1;
+    int rc = object_write(OBJ_TREE, data, len, id_out);
+    free(data);
+    return rc;
+}
 
 // ─── Mode Constants ─────────────────────────────────────────────────────────
 
@@ -130,8 +219,80 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 //
 // Returns 0 on success, -1 on error.
 int tree_from_index(ObjectID *id_out) {
-    // TODO: Implement recursive tree building
-    // (See Lab Appendix for logical steps)
-    (void)id_out;
-    return -1;
+    TreeNode *root = tree_node_new("", 0);
+    if (!root) return -1;
+
+    FILE *f = fopen(INDEX_FILE, "r");
+    if (!f) {
+        if (errno == ENOENT) {
+            int rc_empty = write_tree_recursive(root, id_out);
+            tree_node_free(root);
+            return rc_empty;
+        }
+        tree_node_free(root);
+        return -1;
+    }
+
+    char line[1024];
+    while (fgets(line, sizeof(line), f)) {
+        uint32_t mode = 0;
+        ObjectID hash;
+        uint64_t mtime = 0;
+        uint32_t size = 0;
+        char hash_hex[HASH_HEX_SIZE + 1];
+        char path_copy[512];
+        if (sscanf(line, "%o %64s %" SCNu64 " %u %511[^\n]",
+                   &mode, hash_hex, &mtime, &size, path_copy) != 5) {
+            fclose(f);
+            tree_node_free(root);
+            return -1;
+        }
+        (void)mtime;
+        (void)size;
+        if (hex_to_hash(hash_hex, &hash) != 0) {
+            fclose(f);
+            tree_node_free(root);
+            return -1;
+        }
+
+        TreeNode *current = root;
+        char *saveptr = NULL;
+        char *part = strtok_r(path_copy, "/", &saveptr);
+        while (part) {
+            char *next = strtok_r(NULL, "/", &saveptr);
+            int is_file = (next == NULL);
+
+            TreeNode *child = tree_node_find_child(current, part);
+            if (!child) {
+                child = tree_node_add_child(current, part, is_file);
+                if (!child) {
+                    fclose(f);
+                    tree_node_free(root);
+                    return -1;
+                }
+            }
+
+            if (is_file) {
+                if (!child->is_file) {
+                    fclose(f);
+                    tree_node_free(root);
+                    return -1;
+                }
+                child->mode = mode;
+                child->hash = hash;
+            } else if (child->is_file) {
+                fclose(f);
+                tree_node_free(root);
+                return -1;
+            }
+
+            current = child;
+            part = next;
+        }
+    }
+    fclose(f);
+
+    int rc = write_tree_recursive(root, id_out);
+    tree_node_free(root);
+    return rc;
 }
