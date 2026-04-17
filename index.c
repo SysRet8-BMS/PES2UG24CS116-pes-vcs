@@ -146,6 +146,7 @@ int index_status(const Index *index) {
 //
 // Returns 0 on success, -1 on error.
 int index_load(Index *index) {
+    if (!index) return -1;
     index->count = 0;
     FILE *f = fopen(INDEX_FILE, "r");
     if (!f) return (errno == ENOENT) ? 0 : -1;
@@ -187,6 +188,7 @@ int index_load(Index *index) {
 //
 // Returns 0 on success, -1 on error.
 int index_save(const Index *index) {
+    if (!index) return -1;
     IndexEntry *sorted_entries = NULL;
     if (index->count > 0) {
         sorted_entries = malloc((size_t)index->count * sizeof(IndexEntry));
@@ -240,6 +242,7 @@ int index_save(const Index *index) {
 //
 // Returns 0 on success, -1 on error.
 int index_add(Index *index, const char *path) {
+    if (!index || !path || path[0] == '\0') return -1;
     struct stat st;
     if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) return -1;
     if ((uint64_t)st.st_size > UINT32_MAX) return -1;
