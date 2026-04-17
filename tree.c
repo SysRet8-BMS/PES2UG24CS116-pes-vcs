@@ -78,6 +78,7 @@ static TreeNode *tree_node_add_child(TreeNode *parent, const char *name, int is_
 }
 
 static int write_tree_recursive(const TreeNode *node, ObjectID *id_out) {
+    if (!node || !id_out) return -1;
     Tree tree = {0};
     if (node->child_count > MAX_TREE_ENTRIES) return -1;
 
