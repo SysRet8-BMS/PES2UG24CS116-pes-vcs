@@ -201,8 +201,8 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
 
     if (tree_from_index(&commit.tree) != 0) return -1;
 
-    if (head_read(&commit.parent) == 0) commit.has_parent = 1;
-    else commit.has_parent = 0;
+    int parent_rc = head_read(&commit.parent);
+    commit.has_parent = (parent_rc == 0);
 
     if (snprintf(commit.author, sizeof(commit.author), "%s", pes_author()) >= (int)sizeof(commit.author)) {
         return -1;
