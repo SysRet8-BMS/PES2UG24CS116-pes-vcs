@@ -236,6 +236,13 @@ int tree_from_index(ObjectID *id_out) {
 
     char line[1024];
     while (fgets(line, sizeof(line), f)) {
+        size_t line_len = strlen(line);
+        if (line_len == sizeof(line) - 1 && line[line_len - 1] != '\n') {
+            fclose(f);
+            tree_node_free(root);
+            return -1;
+        }
+
         uint32_t mode = 0;
         ObjectID hash;
         uint64_t mtime = 0;
