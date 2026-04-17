@@ -207,7 +207,9 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
     if (snprintf(commit.author, sizeof(commit.author), "%s", pes_author()) >= (int)sizeof(commit.author)) {
         return -1;
     }
-    commit.timestamp = (uint64_t)time(NULL);
+    time_t now = time(NULL);
+    if (now == (time_t)-1) return -1;
+    commit.timestamp = (uint64_t)now;
     if (snprintf(commit.message, sizeof(commit.message), "%s", message) >= (int)sizeof(commit.message)) {
         return -1;
     }
