@@ -204,9 +204,13 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
     if (head_read(&commit.parent) == 0) commit.has_parent = 1;
     else commit.has_parent = 0;
 
-    snprintf(commit.author, sizeof(commit.author), "%s", pes_author());
+    if (snprintf(commit.author, sizeof(commit.author), "%s", pes_author()) >= (int)sizeof(commit.author)) {
+        return -1;
+    }
     commit.timestamp = (uint64_t)time(NULL);
-    snprintf(commit.message, sizeof(commit.message), "%s", message);
+    if (snprintf(commit.message, sizeof(commit.message), "%s", message) >= (int)sizeof(commit.message)) {
+        return -1;
+    }
 
     void *raw = NULL;
     size_t raw_len = 0;
