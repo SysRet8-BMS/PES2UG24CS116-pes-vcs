@@ -144,6 +144,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     size_t written = 0;
     while (written < object_len) {
         ssize_t n = write(fd, object_buf + written, object_len - written);
+        if (n < 0 && errno == EINTR) continue;
         if (n <= 0) {
             close(fd);
             unlink(tmp_path);
